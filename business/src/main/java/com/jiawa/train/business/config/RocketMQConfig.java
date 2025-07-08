@@ -1,25 +1,35 @@
-// package com.jiawa.train.business.config;
-//
-// import org.apache.rocketmq.client.producer.DefaultMQProducer;
-// import org.apache.rocketmq.spring.core.RocketMQTemplate;
-// import org.springframework.context.annotation.Bean;
-// import org.springframework.stereotype.Component;
-//
-// @Component
-// public class RocketMQConfig {
-//
-//     /**
-//      * 新版本需要声明RocketMQTemplate，否则会注入失败
-//      * @return
-//      */
-//     @Bean
-//     public RocketMQTemplate rocketMQTemplate() {
-//         RocketMQTemplate rocketMQTemplate = new RocketMQTemplate();
-//         DefaultMQProducer producer = new DefaultMQProducer();
-//         producer.setProducerGroup("default");
-//         producer.setNamesrvAddr("http://localhost:9876");
-//         producer.setSendMsgTimeout(3000);
-//         rocketMQTemplate.setProducer(producer);
-//         return rocketMQTemplate;
-//     }
-// }
+package com.jiawa.train.business.config;
+
+import com.jiawa.train.business.mq.OrderMessageListener;
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+
+@Configuration
+public class RocketMQConfig {
+    @Value("${rocketmq.consumer.group}")
+    private String consumerGroup;
+
+    @Value("${rocketmq.namesrv-addr}")
+    private String namesrvAddr;
+
+    @Bean(initMethod = "start", destroyMethod = "shutdown")
+    public DefaultMQPushConsumer orderConsumer(
+            OrderMessageListener messageListener // 包含降级逻辑的监听器
+    ) throws MQClientException {
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer(consumerGroup);
+        consumer.setNamesrvAddr(namesrvAddr);
+        consumer.subscribe("CONFIRM_ORDER", "*");
+
+        // 关键：注入包含降级逻辑的监听器
+        consumer.registerMessageListener(messageListener);
+
+        // 初始线程设置
+        consumer.setConsumeThreadMin(8);
+        consumer.setConsumeThreadMax(32);
+        return consumer;
+    }
+}
